@@ -29,6 +29,8 @@ namespace ParticleSystem  {
             InitializeParticles();
             SetupComputeShaders();
             SetupBounds();
+            
+            Debug.Log($"Starting Particle System with {settings.maxParticles} particles.");
         }
 
         private void InitializeBuffers() {
