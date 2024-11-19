@@ -23,10 +23,7 @@ Shader "Custom/InstanceParticle"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct ParticleData {
-                float4x4 mat;
-                float3 anchor;
-            };
+            #include "../Utils/ParticlesUtils.hlsl"
 
             StructuredBuffer<ParticleData> _ParticleBuffer;
             float4 _BaseColor;
