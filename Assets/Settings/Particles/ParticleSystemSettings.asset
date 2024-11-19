@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 0}
   m_Name: ParticleSystemSettings
   m_EditorClassIdentifier: Assembly-CSharp:ParticleSystem:ParticleSystemSettings
-  maxParticles: 10000
+  maxParticles: 100
   bounds: {x: 15, y: 10, z: 15}
-  particleSize: 0.2
+  particleSize: 1
   particleMesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
   particleMaterial: {fileID: 2100000, guid: ef7002ec4bd164e8188c392898de1bbf, type: 2}

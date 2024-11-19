@@ -1,31 +1,34 @@
 #pragma kernel CSMovement
 
-// todo: move this in a particle_utils.hlsl file
-struct ParticleData {
-    float4x4 mat;
-    float3 anchor;
-};
+#include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
 
 RWStructuredBuffer<ParticleData> _Particles;
 uint _ParticleCount;
 float _DeltaTime;
 float _Time;
 
-
 [numthreads(64,1,1)]
 void CSMovement(uint3 id : SV_DispatchThreadID) {
     if (id.x >= _ParticleCount) return;
-    
+
+    float t = _Time;
+
     ParticleData particle = _Particles[id.x];
 
-    float3 position = float3(0, sin(_Time + id.x), 0);
-    const float3 new_pos = particle.anchor + position;
+    float3 velocity;
+    velocity.x = cos(t) * 5;
+    velocity.y = sin(t + id.x);
+    velocity.z = sin(t) * 2;
 
-    float4x4 mat = particle.mat;
-    mat[0][3] = new_pos.x;
-    mat[1][3] = new_pos.y;
-    mat[2][3] = new_pos.z;
+    float3 nextPos = (velocity * _DeltaTime);
 
-    particle.mat = mat;
+    float4x4 translationMatrix = GetTranslationMatrix(nextPos);
+
+    float3 angle = (velocity * _DeltaTime);
+    float4x4 rotationMatrix = ComputeRotationMatrix(angle);
+
+    float4x4 transform = mul(mul(particle.mat, rotationMatrix), translationMatrix);
+
+    particle.mat = transform;
     _Particles[id.x] = particle;
 }

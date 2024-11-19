@@ -1,5 +1,6 @@
 using Unity.Mathematics.Geometry;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace ParticleSystem  {
     public class ParticleManager : MonoBehaviour {
@@ -19,7 +20,7 @@ namespace ParticleSystem  {
         private static readonly int DeltaTimeID = Shader.PropertyToID("_DeltaTime");
         private static readonly int TimeID = Shader.PropertyToID("_Time");
 
-        // shader property IDs for the HDRP instance shader
+        // shader property IDs for the instance shader
         private static readonly int ParticleBufferID = Shader.PropertyToID("_ParticleBuffer");
 
         private Bounds _bounds;
@@ -55,7 +56,8 @@ namespace ParticleSystem  {
                     Random.Range(-settings.bounds.y * 0.5f, settings.bounds.y * 0.5f),
                     Random.Range(-settings.bounds.z * 0.5f, settings.bounds.z * 0.5f)
                 );
-                Quaternion rotation = Quaternion.Euler(Random.Range(-180, 180), Random.Range(-180, 180), Random.Range(-180, 180));
+                //Quaternion rotation = Quaternion.Euler(Random.Range(-180, 180), Random.Range(-180, 180), Random.Range(-180, 180));
+                Quaternion rotation = Quaternion.identity;
                 Vector3 scale = Vector3.one * (settings.particleSize * Random.Range(0.5f, 1.5f));
 
                 particles[i] = new ParticleData  {
@@ -101,10 +103,6 @@ namespace ParticleSystem  {
             movementShader.SetInt(ParticleCountID, settings.maxParticles);
             movementShader.SetFloat(DeltaTimeID, Time.deltaTime);
             movementShader.SetFloat(TimeID, Time.time);
-            //movementShader.SetFloat(WaveFrequencyID, settings.waveFrequency);
-            //movementShader.SetFloat(WaveAmplitudeID, settings.waveAmplitude);
-            //movementShader.SetFloat(WaveTurbulenceID, settings.waveTurbulence);
-            //movementShader.SetVector(BoundsID, settings.bounds);
         }
 
         private void DispatchComputeShaders() {
