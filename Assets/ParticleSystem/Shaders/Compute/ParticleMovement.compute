@@ -1,34 +1,135 @@
 #pragma kernel CSMovement
+#pragma kernel CSGridReset
+#pragma kernel CSGridAssign
+#pragma kernel CSCollision
 
 #include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
 
-RWStructuredBuffer<ParticleData> _Particles;
-uint _ParticleCount;
-float _DeltaTime;
-float _Time;
+RWStructuredBuffer<ParticleData> particles;
+RWStructuredBuffer<GridCell> grid_cells;
+RWStructuredBuffer<uint> grid_indices;
+
+uint size;
+float delta_time;
+float time;
+float radius;
+
+float3 grid_size;
+float3 rotation;
+float3 velocity;
+float speed;
 
 [numthreads(64,1,1)]
 void CSMovement(uint3 id : SV_DispatchThreadID) {
-    if (id.x >= _ParticleCount) return;
+    if (id.x >= size) return;
 
-    float t = _Time;
+    float t = time;
 
-    ParticleData particle = _Particles[id.x];
+    ParticleData particle = particles[id.x];
 
-    float3 velocity;
-    velocity.x = cos(t) * 5;
-    velocity.y = sin(t + id.x);
-    velocity.z = sin(t) * 2;
+    float3 vel = velocity;
+    vel.x += cos(t + id.x);
+    vel.y += sin(t + id.x);
+    vel.z += cos(t + id.x);
+    vel *= speed;
 
-    float3 nextPos = (velocity * _DeltaTime);
+    float3 position = particle.position + (vel * delta_time);
+    position = clamp(position, -grid_size*0.5, grid_size*0.5);
 
-    float4x4 translationMatrix = GetTranslationMatrix(nextPos);
+    float4x4 scaleMatrix = GetScaleMatrix(particle.scale);
+    float4x4 translationMatrix = GetTranslationMatrix(position);
 
-    float3 angle = (velocity * _DeltaTime);
-    float4x4 rotationMatrix = ComputeRotationMatrix(angle);
+    float4x4 baseRotationMatrix = EulerToRotationMatrix(particle.rotation);
+    float4x4 offsetRotationMatrix = EulerToRotationMatrix(rotation);
+    float4x4 angularRotationMatrix = GetRotationMatrix(vel);
+    float4x4 rotationMatrix = mul(mul(baseRotationMatrix, offsetRotationMatrix), angularRotationMatrix);
 
-    float4x4 transform = mul(mul(particle.mat, rotationMatrix), translationMatrix);
+    particle.position = position;
+    particle.velocity = velocity;
 
-    particle.mat = transform;
-    _Particles[id.x] = particle;
+    particle.mat = mul(translationMatrix, mul(rotationMatrix, scaleMatrix));
+
+    particles[id.x] = particle;
+}
+
+[numthreads(64,1,1)]
+void CSGridReset(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= grid_size.x * grid_size.y * grid_size.z) return;
+    grid_cells[id.x].particle_count = 0;
+}
+
+uint3 GetGridCell(float3 position) {
+    float3 normalized = (position + grid_size) / (2.0 * grid_size);
+    return uint3(normalized * grid_size);
+}
+
+[numthreads(64,1,1)]
+void CSGridAssign(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= size) return;
+
+    ParticleData particle = particles[id.x];
+
+    float3 position = particle.position;
+
+    uint3 cellIndex = GetGridCell(position);
+    uint linearCellIndex = cellIndex.x + 
+                          cellIndex.y * grid_size.x + 
+                          cellIndex.z * grid_size.x * grid_size.y;
+
+    InterlockedAdd(grid_cells[linearCellIndex].particle_count, 1);
+
+    grid_indices[id.x] = linearCellIndex;
+}
+
+[numthreads(64,1,1)]
+void CSCollision (uint3 id : SV_DispatchThreadID) {
+    //return;
+    if (id.x >= size) return;
+
+    ParticleData particle = particles[id.x];
+    float3 position = particle.position;
+    float3 velocity = float3(0, 0, 0);
+    uint3 cellIndex = GetGridCell(position);
+
+    float3 totalForce = float3(0, 0, 0);
+    int collisionCount = 0;
+
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int z = -1; z <= 1; z++) {
+                uint3 neighborCell = clamp(cellIndex + uint3(x, y, z), uint3(0, 0, 0), grid_size - uint3(1, 1, 1));
+                uint neighborCellIndex = neighborCell.x + 
+                                         neighborCell.y * grid_size.x + 
+                                         neighborCell.z * grid_size.x * grid_size.y;
+
+                for (uint i = 0; i < grid_cells[neighborCellIndex].particle_count; i++) {
+                    uint particleIndex = grid_indices[grid_cells[neighborCellIndex].start_index + i];
+                    if (particleIndex == id.x) continue; // Skip self
+                    
+                    ParticleData _other = particles[particleIndex];
+                    float3 other = _other.position;
+                    float3 diff = position - other;
+                    float dist = length(diff);
+
+                    if (dist < radius && dist > 0) {
+                        float3 normal = (dist > 0) ? normalize(diff) : float3(0, 0, 0);
+                        float _force = (radius - dist) / radius;
+                        totalForce += normal * _force;
+                        collisionCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    if (collisionCount > 0) {
+        velocity = (velocity * 0.9) + (totalForce / collisionCount) * delta_time * 5.0;
+    }
+
+    float3 next_pos = position + (velocity * delta_time);
+    next_pos = clamp(next_pos, -grid_size * 0.5, grid_size * 0.5);
+    float3 displacement = next_pos - position;
+
+    particle.force = totalForce;
+    particles[id.x] = particle;
 }

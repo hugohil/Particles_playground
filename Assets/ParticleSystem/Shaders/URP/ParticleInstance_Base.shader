@@ -38,6 +38,7 @@ Shader "Custom/InstanceParticle"
                 float4 positionCS : SV_POSITION;
                 float3 viewDir : TEXCOORD0;
                 float3 normal : TEXCOORD1;
+                uint instanceID : SV_InstanceID;
             };
 
             Varyings Vert(Attributes input) {
@@ -55,14 +56,19 @@ Shader "Custom/InstanceParticle"
                 float3 transformedNormal = mul(particle.mat, input.normal);
                 output.normal = normalize(TransformObjectToWorldNormal(transformedNormal));
 
+                output.instanceID = input.instanceID;
+
                 return output;
             }
 
             float4 Frag(Varyings input) : SV_Target {
+                ParticleData particle = _ParticleBuffer[input.instanceID];
+
                 float3 viewDir = input.viewDir;
                 float3 normalWS = input.normal;
 
                 float shade = dot(normalWS, viewDir);
+                shade += abs(particle.force) * 2.0;
 
                 return _BaseColor * shade;
             }
