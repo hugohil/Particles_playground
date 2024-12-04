@@ -24,9 +24,7 @@ struct GridCell {
 float4x4 GetRotationMatrix(float3 velocity) {
     float3 forward = length(velocity) > 0.0001f ? normalize(velocity) : float3(0, 0, 1);
     float3 up = float3(0, 1, 0);
-    float3 right = abs(dot(forward, up)) > 0.99f ? 
-        float3(1, 0, 0) : 
-        normalize(cross(up, forward));
+    float3 right = abs(dot(forward, up)) > 0.99f ?  float3(1, 0, 0) : normalize(cross(up, forward));
 
     up = normalize(cross(right, forward));
     right = normalize(cross(up, forward));

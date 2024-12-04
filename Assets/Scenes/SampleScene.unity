@@ -534,7 +534,12 @@ MonoBehaviour:
   movementShader: {fileID: 7200000, guid: af6e645cfe0034086893e7f642d31d59, type: 3}
   rotation: {x: 0, y: 0, z: 0}
   velocity: {x: 0, y: 0, z: 0}
-  speed: 1.5
+  speed: 3
+  maxVel: 20
+  debugItem: 0
+  debugMesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  debugMat: {fileID: 2100000, guid: 53b1aac12f61d45b5809f0f24176b3db, type: 2}
+  debugGrid: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

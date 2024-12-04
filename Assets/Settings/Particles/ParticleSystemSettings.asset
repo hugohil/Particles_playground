@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 0}
   m_Name: ParticleSystemSettings
   m_EditorClassIdentifier: Assembly-CSharp:ParticleSystem:ParticleSystemSettings
-  maxParticles: 4096
+  maxParticles: 1024
   bounds: {x: 50, y: 50, z: 50}
-  collisionGridSize: {x: 25, y: 12, z: 6}
-  particleSize: 0.1
-  radius: 1
-  particleMesh: {fileID: 3613567641014311022, guid: 5ecd39a8b0ed24a38a1de6b69336b9c3, type: 3}
+  collisionGridSize: {x: 7.75, y: 10, z: 3}
+  particleSize: 0.2
+  radius: 1.5
+  particleMesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
   particleMaterial: {fileID: 2100000, guid: ef7002ec4bd164e8188c392898de1bbf, type: 2}

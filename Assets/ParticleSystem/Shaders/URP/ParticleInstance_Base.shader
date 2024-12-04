@@ -26,6 +26,7 @@ Shader "Custom/InstanceParticle"
             #include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
 
             StructuredBuffer<ParticleData> _ParticleBuffer;
+            uint debugItem;
             float4 _BaseColor;
 
             struct Attributes {
@@ -68,7 +69,11 @@ Shader "Custom/InstanceParticle"
                 float3 normalWS = input.normal;
 
                 float shade = dot(normalWS, viewDir);
-                shade += abs(particle.force) * 2.0;
+                shade += abs(particle.force);
+
+                if (input.instanceID == debugItem) {
+                    _BaseColor = float4(0,0,1,1) * 50.0;
+                }
 
                 return _BaseColor * shade;
             }
