@@ -16,5 +16,5 @@ MonoBehaviour:
   gridSize: {x: 8, y: 8, z: 8}
   particleSize: 0.2
   radius: 1
-  particleMesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  particleMesh: {fileID: -1648648877385362727, guid: 811ad674b4e46401ead90c3cbcf4bbb6, type: 3}
   particleMaterial: {fileID: 2100000, guid: ef7002ec4bd164e8188c392898de1bbf, type: 2}
