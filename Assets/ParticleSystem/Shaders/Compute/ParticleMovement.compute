@@ -1,48 +1,37 @@
 #pragma kernel CSMovement
-#pragma kernel CSGridReset
-#pragma kernel CSGridAssign
-#pragma kernel CSComputeStartIndices
-#pragma kernel CSCollision
 
 #include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
 
 RWStructuredBuffer<ParticleData> particles;
-RWStructuredBuffer<GridCell> grid_cells;
-RWStructuredBuffer<uint> grid_indices;
 
-uint size;
+uint num_particle;
 float delta_time;
 float time;
-float radius;
 
-float3 grid_size;
+float3 area;
 float3 rotation;
 float3 velocity;
 float speed;
-float maxVel;
-
-int debugItem;
+float max_vel;
 
 [numthreads(64,1,1)]
 void CSMovement(uint3 id : SV_DispatchThreadID) {
-    if (id.x >= size) return;
-
-    float t = time;
+    if (id.x >= num_particle) return;
 
     ParticleData particle = particles[id.x];
 
     float3 vel = particle.velocity + velocity;
     /*
-    vel.x += cos(t + id.x);
-    vel.y += sin(t + id.x);
-    vel.z += cos(t + id.x);
+    vel.x += cos(time + id.x);
+    vel.y += sin(time + id.x);
+    vel.z += cos(time + id.x);
     */
     vel *= speed;
 
-    vel = clamp(vel, -2, 2);
+    vel = clamp(vel, -max_vel, max_vel);
 
     float3 position = particle.position + (vel * delta_time);
-    position = clamp(position, -grid_size*0.5, grid_size*0.5);
+    position = clamp(position, -area*0.5, area*0.5);
 
     float4x4 scaleMatrix = GetScaleMatrix(particle.scale);
     float4x4 translationMatrix = GetTranslationMatrix(position);
@@ -56,123 +45,6 @@ void CSMovement(uint3 id : SV_DispatchThreadID) {
     particle.velocity = velocity;
 
     particle.mat = mul(translationMatrix, mul(rotationMatrix, scaleMatrix));
-
-    particles[id.x] = particle;
-}
-
-[numthreads(64,1,1)]
-void CSGridReset(uint3 id : SV_DispatchThreadID) {
-    if (id.x > uint(grid_size.x * grid_size.y * grid_size.z)) return;
-    grid_cells[id.x].particle_count = 0;
-    grid_cells[id.x].start_index = 0;
-}
-
-// todo: fix when theres more grid cells than particles
-uint3 GetGridCell(float3 position) {
-    float3 offset_pos = position + (grid_size * 0.5);
-    uint3 grid_cell = uint3(floor(offset_pos));
-    return clamp(grid_cell, uint3(0, 0, 0), (grid_size - 1));
-}
-
-[numthreads(64,1,1)]
-void CSGridAssign(uint3 id : SV_DispatchThreadID) {
-    if (id.x >= size) return;
-
-    ParticleData particle = particles[id.x];
-
-    float3 position = particle.position;
-
-    int3 grid = floor(grid_size);
-    uint3 cellIndex = GetGridCell(position);
-    uint linearCellIndex = cellIndex.x + 
-                          cellIndex.y * grid.x + 
-                          cellIndex.z * grid.x * grid.y;
-
-    uint position_in_cell;
-    InterlockedAdd(grid_cells[linearCellIndex].particle_count, 1, position_in_cell);
-
-    grid_indices[grid_cells[linearCellIndex].start_index + position_in_cell] = id.x;
-}
-
-[numthreads(64,1,1)]
-void CSComputeStartIndices(uint3 id : SV_DispatchThreadID) {
-    if (id.x == 0) return;
-    if (id.x >= size) return;
-
-    int prev_index = grid_indices[id.x - 1];
-    int curr_index = grid_indices[id.x];
-
-    if (curr_index != prev_index) {
-        grid_cells[curr_index].start_index = (int) id.x;
-    }
-}
-
-[numthreads(64,1,1)]
-void CSCollision(uint3 id : SV_DispatchThreadID) {
-    if (id.x >= size) return;
-
-    ParticleData particle = particles[id.x];
-    float3 position = particle.position;
-    float3 vel = particle.velocity;
-    uint3 cellIndex = GetGridCell(position);
-    int3 grid = floor(grid_size);
-    
-    float3 positionCorrection = float3(0, 0, 0);
-    int collisionCount = 0;
-
-    for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-            for (int z = -1; z <= 1; z++) {
-                uint3 neighborCell = clamp(cellIndex + uint3(x, y, z), uint3(0, 0, 0), (grid_size - 1));
-                uint neighborCellIndex = neighborCell.x + 
-                                       neighborCell.y * grid.x + 
-                                       neighborCell.z * grid.x * grid.y;
-
-                for (int i = 0; i < grid_cells[neighborCellIndex].particle_count; i++) {
-                    uint particleIndex = grid_indices[grid_cells[neighborCellIndex].start_index + i];
-                    if (particleIndex == id.x) continue;
-                    
-                    ParticleData other = particles[particleIndex];
-                    float3 diff = position - other.position;
-                    float dist = length(diff);
-                    
-                    // Prevent division by zero
-                    const float EPSILON = 0.001;
-                    if (dist < EPSILON) {
-                        // Add tiny random offset if particles are exactly overlapping
-                        diff = float3(
-                            sin(id.x * 123.321),
-                            sin(id.x * 456.654),
-                            sin(id.x * 789.987)
-                        ) * EPSILON;
-                        dist = EPSILON;
-                    }
-
-                    if (dist < radius) {
-                        float3 normal = normalize(diff);
-                        float overlap = radius - dist;
-
-                        positionCorrection += normal * overlap;
-                        
-                        float spring = min(1.0, overlap / radius);
-                        vel += normal * spring * delta_time;
-                        
-                        collisionCount++;
-                    }
-                }
-            }
-        }
-    }
-
-    if (collisionCount > 0) {
-        position += positionCorrection;
-        position = clamp(position, -grid_size * 0.5, grid_size * 0.5);
-    }
-
-    vel *= 0.9;
-
-    particle.position = position;
-    particle.velocity = vel;
 
     particles[id.x] = particle;
 }

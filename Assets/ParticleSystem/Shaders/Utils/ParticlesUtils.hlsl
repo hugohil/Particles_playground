@@ -16,9 +16,9 @@ struct ParticleData {
     float force;
 };
 
-struct GridCell {
-    int particle_count;
-    int start_index;
+struct CellOffset {
+    uint startIndex;
+    uint count;
 };
 
 float4x4 GetRotationMatrix(float3 velocity) {
@@ -51,18 +51,6 @@ float4x4 EulerToRotationMatrix(float3 eulerAngles) {
     );
 }
 
-float3 GetEuler(float4x4 rotationMatrix) {
-    return float3(
-        atan2(rotationMatrix[1][2], rotationMatrix[2][2]),
-        atan2(-rotationMatrix[0][2], length(float3(rotationMatrix[0][0], rotationMatrix[0][1], rotationMatrix[0][2]))),
-        atan2(rotationMatrix[0][1], rotationMatrix[0][0])
-    );
-}
-
-float3 GetAngularVelocity(float3 vel, float3 pos) {
-    return cross(pos, vel) / dot(pos, pos);
-}
-
 float3 GetTranslationFromTransform(float4x4 transform) {
     return float3(transform[0][3], transform[1][3], transform[2][3]);
 }
@@ -84,11 +72,3 @@ float4x4 GetScaleMatrix(float3 scale) {
         0.0, 0.0, 0.0, 1.0
     );
 }
-
-float3x3 NormalizeMatrix(float3x3 mat) {
-    mat[0] = normalize(mat[0]);
-    mat[1] = normalize(mat[1] - dot(mat[0], mat[1]) * mat[0]);
-    mat[2] = cross(mat[0], mat[1]);
-    return mat;
-}
-

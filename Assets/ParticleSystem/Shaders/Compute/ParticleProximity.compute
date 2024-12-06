@@ -1,0 +1,52 @@
+#pragma kernel ComputeCellIndices
+#pragma kernel CountParticlesPerCell
+#pragma kernel UpSweep
+#pragma kernel DownSweep
+#pragma kernel BuildCellOffsets 
+#pragma kernel SortParticles
+#pragma kernel Collision
+
+#include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
+
+RWStructuredBuffer<ParticleData> particles;
+RWStructuredBuffer<ParticleData> sorted_particles;
+RWStructuredBuffer<uint> cell_indices;
+RWStructuredBuffer<uint> particle_indices;
+RWStructuredBuffer<uint> cell_counts;
+RWStructuredBuffer<CellOffset> cell_offsets;
+RWStructuredBuffer<uint> cell_offset_counters;
+
+uint num_particle;
+int3 grid_size;
+float delta_time;
+float time;
+float radius;
+
+[numthreads(64,1,1)]
+void ComputeCellIndices(uint3 id : SV_DispatchThreadID) {
+}
+
+[numthreads(64,1,1)]
+void CountParticlesPerCell(uint3 id : SV_DispatchThreadID) {
+}
+
+[numthreads(64,1,1)]
+void UpSweep(uint3 id : SV_DispatchThreadID) {
+}
+
+[numthreads(64,1,1)]
+void DownSweep(uint3 id : SV_DispatchThreadID) {
+}
+
+[numthreads(64,1,1)]
+void BuildCellOffsets(uint3 id : SV_DispatchThreadID) {
+} 
+
+[numthreads(64,1,1)]
+void SortParticles(uint3 id : SV_DispatchThreadID) {
+}
+
+[numthreads(64,1,1)]
+void Collision(uint3 id : SV_DispatchThreadID) {
+}
+

@@ -9,13 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: dbcdaa389a684640b29fdf17ff28e3e5, type: 3}
   m_Name: ParticleSystemSettings
-  m_EditorClassIdentifier: Assembly-CSharp:ParticleSystem:ParticleSystemSettings
+  m_EditorClassIdentifier: 
   maxParticles: 1024
-  bounds: {x: 50, y: 50, z: 50}
-  collisionGridSize: {x: 7.75, y: 10, z: 3}
+  gridSize: {x: 8, y: 8, z: 8}
   particleSize: 0.2
-  radius: 1.5
+  radius: 1
   particleMesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
   particleMaterial: {fileID: 2100000, guid: ef7002ec4bd164e8188c392898de1bbf, type: 2}

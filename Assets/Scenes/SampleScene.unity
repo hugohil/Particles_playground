@@ -532,14 +532,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   settings: {fileID: 11400000, guid: b51ce3a71efd04b78abc67e1863d06e1, type: 2}
   movementShader: {fileID: 7200000, guid: af6e645cfe0034086893e7f642d31d59, type: 3}
+  proximityShader: {fileID: 7200000, guid: 1fab6033e8fc44ef38af44ee2b98cce1, type: 3}
   rotation: {x: 0, y: 0, z: 0}
-  velocity: {x: 0, y: 0, z: 0}
-  speed: 3
+  velocity: {x: 0, y: -0.1, z: 0}
+  speed: 2
   maxVel: 20
   debugItem: 0
   debugMesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
   debugMat: {fileID: 2100000, guid: 53b1aac12f61d45b5809f0f24176b3db, type: 2}
-  debugGrid: 0
+  debugGrid: 1
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0

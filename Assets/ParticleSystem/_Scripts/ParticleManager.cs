@@ -4,45 +4,63 @@ namespace ParticleSystem  {
     public class ParticleManager : MonoBehaviour {
         [SerializeField] private ParticleSystemSettings settings;
 
+        // main particle buffer (used accross all shaders)
         private ComputeBuffer _particleBuffer;
-        private ComputeBuffer _gridSortedIndicesBuffer; // particle ids sorted by their position in the collision grid
-        private ComputeBuffer _gridCellsBuffer; // all collision grid cells with start index and particle count
+        
+        // proximity compute buffers
+        private ComputeBuffer _sortedParticleBuffer;
+        private ComputeBuffer _cellIndicesBuffer;
+        private ComputeBuffer _particleIndicesBuffer;
+        private ComputeBuffer _cellCountsBuffer;
+        private ComputeBuffer _cellOffsetsBuffer;
+        private ComputeBuffer _cellOffsetCountersBuffer;
+
+        // rendering
         private ComputeBuffer _indirectArgsBuffer;
         private uint[] _indirectArgs = new uint[5];
 
         [SerializeField] private ComputeShader movementShader;
-
         private int _moveKernelID;
-        private int _gridResetKernelID;
-        private int _gridAssignKernelID;
-        private int _gridStartIndicesID;
+
+        [SerializeField] private ComputeShader proximityShader;
+        private int _cellIndicesKernelID;
+        private int _countPerCellKernelID;
+        private int _upSweepKernelID;
+        private int _downSweepKernelID;
+        private int _cellOffsetsKernelID;
+        private int _sortKernelID;
         private int _collisionKernelID;
 
-        // shader property IDs for the compute shaders
         private static readonly int ParticlesID = Shader.PropertyToID("particles");
-        private static readonly int GridCellsID = Shader.PropertyToID("grid_cells");
-        private static readonly int GridIndicesID = Shader.PropertyToID("grid_indices");
-        private static readonly int ParticleCountID = Shader.PropertyToID("size");
+        private static readonly int ParticleCountID = Shader.PropertyToID("num_particle");
         private static readonly int DeltaTimeID = Shader.PropertyToID("delta_time");
         private static readonly int TimeID = Shader.PropertyToID("time");
-        private static readonly int RadiusID = Shader.PropertyToID("radius");
+        private static readonly int AreaID = Shader.PropertyToID("area");
+        private static readonly int RotationID = Shader.PropertyToID("rotation");
+        private static readonly int VelocityID = Shader.PropertyToID("velocity");
+        private static readonly int SpeedID = Shader.PropertyToID("speed");
+        private static readonly int MaxVelID = Shader.PropertyToID("max_vel");
+        private static readonly int SortedParticlesID = Shader.PropertyToID("sorted_particles");
+        private static readonly int CellIndicesID = Shader.PropertyToID("cell_indices");
+        private static readonly int ParticleIndicesID = Shader.PropertyToID("particle_indices");
+        private static readonly int CellCountsID = Shader.PropertyToID("cell_counts");
+        private static readonly int CellOffsetsID = Shader.PropertyToID("cell_offsets");
+        private static readonly int CellOffsetCountersID = Shader.PropertyToID("cell_offset_counters");
         private static readonly int GridSizeID = Shader.PropertyToID("grid_size");
-
-        // shader property IDs for the instance shader
-        private static readonly int ParticleBufferID = Shader.PropertyToID("_ParticleBuffer");
+        private static readonly int RadiusID = Shader.PropertyToID("radius");
 
         private Bounds _bounds;
 
-        private int _max = (int)ParticleCount._128;
-        private int _gridSize;
+        private int _max = (int)ParticleCount._1024;
+        private int _gridSize1D;
 
         public Vector3 rotation;
         public Vector3 velocity;
         
         [Range(0f, 3f)]
-        public float speed;
+        public float speed = 1f;
 
-        public float maxVel = 2f;
+        public float maxVel = 10f;
 
         [Range(0, 512)]
         public int debugItem;
@@ -87,17 +105,22 @@ namespace ParticleSystem  {
             };
             _indirectArgsBuffer.SetData(_indirectArgs);
 
-            _gridSize = Mathf.CeilToInt(settings.collisionGridSize.x * settings.collisionGridSize.y * settings.collisionGridSize.z);
-            _gridCellsBuffer = new ComputeBuffer(_gridSize, sizeof(int) * 2);
-            _gridSortedIndicesBuffer = new ComputeBuffer(_max, sizeof(uint));
+            _gridSize1D = Mathf.CeilToInt(settings.gridSize.x * settings.gridSize.y * settings.gridSize.z);
+            
+            _sortedParticleBuffer = new ComputeBuffer(_max, ParticleData.Size());
+            _cellIndicesBuffer = new ComputeBuffer(_gridSize1D, sizeof(uint));
+            _particleIndicesBuffer = new ComputeBuffer(_max, sizeof(uint));
+            _cellCountsBuffer = new ComputeBuffer(_gridSize1D, sizeof(uint));
+            _cellOffsetsBuffer = new ComputeBuffer(_gridSize1D, sizeof(uint) * 2);
+            _cellOffsetCountersBuffer = new ComputeBuffer(_gridSize1D, sizeof(uint));
 
-            _gridDebugInstances = new GridDebugInstance[_gridSize];
-            for (int x = 0; x < settings.collisionGridSize.x; x++) {
-                for (int y = 0; y < settings.collisionGridSize.y; y++) {
-                    for (int z = 0; z < settings.collisionGridSize.z; z++) {
-                        float posX = x - (settings.collisionGridSize.x/2f) + 0.5f;
-                        float posY = y - (settings.collisionGridSize.y/2f) + 0.5f;
-                        float posZ = z - (settings.collisionGridSize.z/2f) + 0.5f;
+            _gridDebugInstances = new GridDebugInstance[_gridSize1D];
+            for (int x = 0; x < settings.gridSize.x; x++) {
+                for (int y = 0; y < settings.gridSize.y; y++) {
+                    for (int z = 0; z < settings.gridSize.z; z++) {
+                        float posX = x - (settings.gridSize.x/2f) + 0.5f;
+                        float posY = y - (settings.gridSize.y/2f) + 0.5f;
+                        float posZ = z - (settings.gridSize.z/2f) + 0.5f;
 
                         Vector3 pos = new Vector3(posX, posY, posZ);
 
@@ -105,8 +128,8 @@ namespace ParticleSystem  {
                         inst.objectToWorld = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one);
 
                         int linearCellIndex = x + 
-                                            y * Mathf.FloorToInt(settings.collisionGridSize.x) + 
-                                            z * Mathf.FloorToInt(settings.collisionGridSize.x) * Mathf.FloorToInt(settings.collisionGridSize.y);
+                                            y * Mathf.FloorToInt(settings.gridSize.x) + 
+                                            z * Mathf.FloorToInt(settings.gridSize.x) * Mathf.FloorToInt(settings.gridSize.y);
                         _gridDebugInstances[linearCellIndex] = inst;
                     }
                 }
@@ -117,27 +140,24 @@ namespace ParticleSystem  {
             ParticleData[] particles = new ParticleData[_max];
             
             for (int i = 0; i < _max; i++) {
-                Vector3 position = new Vector3(
-                    Random.Range(-settings.collisionGridSize.x, settings.collisionGridSize.x),
-                    Random.Range(-settings.collisionGridSize.y, settings.collisionGridSize.y),
-                    Random.Range(-settings.collisionGridSize.z, settings.collisionGridSize.z)
+                Vector3 _position = new Vector3(
+                    Random.Range(-settings.gridSize.x, settings.gridSize.x),
+                    Random.Range(-settings.gridSize.y, settings.gridSize.y),
+                    Random.Range(-settings.gridSize.z, settings.gridSize.z)
                 );
-                position *= 0.5f;
-                //Vector3 rotation = Vector3.zero;
-                Vector3 rotation = new Vector3(Random.Range(-180, 180), Random.Range(-180, 180), Random.Range(-180, 180));
-                //Quaternion rotation = Quaternion.Euler(Random.Range(-180, 180), Random.Range(-180, 180), Random.Range(-180, 180));
-                //Quaternion rotation = Quaternion.identity;
-                //Vector3 scale = Vector3.one * (settings.particleSize * Random.Range(0.5f, 1.5f));
-                Vector3 scale = (Vector3.one * settings.particleSize);
+                _position *= 0.5f;
+
+                Vector3 _rotation = new Vector3(Random.Range(-180, 180), Random.Range(-180, 180), Random.Range(-180, 180));
+                Vector3 _scale = (Vector3.one * settings.particleSize);
 
                 particles[i] = new ParticleData  {
-                    mat = Matrix4x4.TRS(position, Quaternion.Euler(rotation), scale),
-                    base_position = position,
-                    position = position,
+                    mat = Matrix4x4.TRS(_position, Quaternion.Euler(_rotation), _scale),
+                    base_position = _position,
+                    position = _position,
                     velocity = new Vector3(0, 0, 0),
                     rotation =  rotation,
                     angular_velocity = new Vector3(0, 0, 0),
-                    scale = scale,
+                    scale = _scale,
                     force = 0
                 };
             }
@@ -147,17 +167,18 @@ namespace ParticleSystem  {
 
         private void SetupComputeShaders() {
             _moveKernelID = movementShader.FindKernel("CSMovement");
-            _gridResetKernelID = movementShader.FindKernel("CSGridReset");
-            _gridAssignKernelID = movementShader.FindKernel("CSGridAssign");
-            _gridStartIndicesID = movementShader.FindKernel("CSComputeStartIndices");
-            _collisionKernelID = movementShader.FindKernel("CSCollision");
+
+            _cellIndicesKernelID = proximityShader.FindKernel("ComputeCellIndices");
+            _countPerCellKernelID = proximityShader.FindKernel("CountParticlesPerCell");
+            _upSweepKernelID = proximityShader.FindKernel("UpSweep");
+            _downSweepKernelID = proximityShader.FindKernel("DownSweep");
+            _cellOffsetsKernelID = proximityShader.FindKernel("BuildCellOffsets");
+            _sortKernelID = proximityShader.FindKernel("SortParticles");
+            _collisionKernelID = proximityShader.FindKernel("Collision");
         }
         
-        private void SetupBounds()  {
-            _bounds = new Bounds(
-                transform.position,
-                settings.bounds * 10f
-            );
+        private void SetupBounds() {
+            _bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
         }
         
         private void Update() {
@@ -171,52 +192,50 @@ namespace ParticleSystem  {
             if (_bounds.center != transform.position) {
                 _bounds.center = transform.position;
             }
-
-            if (_bounds.size != settings.bounds) {
-                _bounds.size = settings.bounds * 10f;
-            }
         }
 
         private void UpdateComputeShaderParameters() {
             movementShader.SetInt(ParticleCountID, _max);
             movementShader.SetFloat(DeltaTimeID, Time.deltaTime);
             movementShader.SetFloat(TimeID, Time.time);
-            movementShader.SetVector(GridSizeID, settings.collisionGridSize);
-            movementShader.SetVector("rotation", rotation);
-            movementShader.SetVector("velocity", velocity);
-            movementShader.SetFloat("speed", speed);
-            movementShader.SetFloat("maxVel", maxVel);
-            movementShader.SetInt("debugItem", debugItem);
-            movementShader.SetFloat(RadiusID, (settings.radius * settings.particleSize));
+            movementShader.SetVector(AreaID, settings.gridSize);
+            movementShader.SetVector(RotationID, rotation);
+            movementShader.SetVector(VelocityID, velocity);
+            movementShader.SetFloat(SpeedID, speed);
+            movementShader.SetFloat(MaxVelID, maxVel);
+            
+            proximityShader.SetInt(ParticleCountID, _max);
+            proximityShader.SetVector(GridSizeID, settings.gridSize);
+            proximityShader.SetFloat(DeltaTimeID, Time.deltaTime);
+            proximityShader.SetFloat(TimeID, Time.time);
+            proximityShader.SetFloat(RadiusID, (settings.radius * settings.particleSize));
         }
 
         private void DispatchComputeShaders() {
-            int movementThreadGroupsX = Mathf.CeilToInt(_max / 64f);
+            int particleThreadGroup = Mathf.CeilToInt(_max / 64f);
 
-            movementShader.SetBuffer(_gridResetKernelID, GridCellsID, _gridCellsBuffer);
-            movementShader.Dispatch(_gridResetKernelID, movementThreadGroupsX, 1, 1);
+            // ComputeCellIndices kernel
             
-            movementShader.SetBuffer(_gridAssignKernelID, ParticlesID, _particleBuffer);
-            movementShader.SetBuffer(_gridAssignKernelID, GridCellsID, _gridCellsBuffer);
-            movementShader.SetBuffer(_gridAssignKernelID, GridIndicesID, _gridSortedIndicesBuffer);
-            movementShader.Dispatch(_gridAssignKernelID, movementThreadGroupsX, 1, 1);
+            // CountParticlesPerCell kernel
             
-            movementShader.SetBuffer(_gridStartIndicesID, GridCellsID, _gridCellsBuffer);
-            movementShader.SetBuffer(_gridStartIndicesID, GridIndicesID, _gridSortedIndicesBuffer);
-            movementShader.Dispatch(_gridStartIndicesID, movementThreadGroupsX, 1, 1);
+            // UpSweep kernel
+            
+            // DownSweep kernel
+            
+            // BuildCellOffsets kernel
+            
+            // SortParticles kernel
+            
+            // Collision kernel
+            
 
-            movementShader.SetBuffer(_collisionKernelID, ParticlesID, _particleBuffer);
-            movementShader.SetBuffer(_collisionKernelID, GridCellsID, _gridCellsBuffer);
-            movementShader.SetBuffer(_collisionKernelID, GridIndicesID, _gridSortedIndicesBuffer);
-            movementShader.Dispatch(_collisionKernelID, movementThreadGroupsX, 1, 1);
-
+            // main kernel
             movementShader.SetBuffer(_moveKernelID, ParticlesID, _particleBuffer);
-            movementShader.Dispatch(_moveKernelID, movementThreadGroupsX, 1, 1);
+            movementShader.Dispatch(_moveKernelID, particleThreadGroup, 1, 1);
         }
 
         private void RenderParticles() {
-            settings.particleMaterial.SetBuffer(ParticleBufferID, _particleBuffer);
-            settings.particleMaterial.SetInt("debugItem", debugItem);
+            settings.particleMaterial.SetBuffer(ParticlesID, _particleBuffer);
 
             // todo: DrawMeshInstancedIndirect is obsolete, switch to Graphics.RenderMeshIndirect
             Graphics.DrawMeshInstancedIndirect(
@@ -228,9 +247,9 @@ namespace ParticleSystem  {
             );
 
             if (debugGrid) {
-                debugRP.material.SetBuffer("gridIDs", _gridSortedIndicesBuffer);
-                debugRP.material.SetInt("debugItem", debugItem);
-                Graphics.RenderMeshInstanced(debugRP, debugMesh, 0, _gridDebugInstances);
+                //debugRP.material.SetBuffer("gridIDs", _gridSortedIndicesBuffer);
+                //debugRP.material.SetInt("debugItem", debugItem);
+                //Graphics.RenderMeshInstanced(debugRP, debugMesh, 0, _gridDebugInstances);
 
                 /*
                 int[] gridIDs = new int[_max];
@@ -242,7 +261,7 @@ namespace ParticleSystem  {
 
         private void OnDrawGizmos() {
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireCube(transform.position, settings.collisionGridSize);
+            Gizmos.DrawWireCube(transform.position, settings.gridSize);
         }
 
         private void OnDestroy() {
@@ -251,9 +270,28 @@ namespace ParticleSystem  {
 
         private void ReleaseBuffers() {
             _particleBuffer?.Dispose();
-            _gridCellsBuffer?.Dispose();
-            _gridSortedIndicesBuffer?.Dispose();
+            _particleBuffer = null;
+
+            _sortedParticleBuffer?.Dispose();
+            _sortedParticleBuffer = null;
+
+            _cellIndicesBuffer?.Dispose();
+            _cellIndicesBuffer = null;
+
+            _particleIndicesBuffer?.Dispose();
+            _particleIndicesBuffer = null;
+
+            _cellCountsBuffer?.Dispose();
+            _cellCountsBuffer = null;
+
+            _cellOffsetsBuffer?.Dispose();
+            _cellOffsetsBuffer = null;
+
+            _cellOffsetCountersBuffer?.Dispose();
+            _cellOffsetCountersBuffer = null;
+
             _indirectArgsBuffer?.Dispose();
+            _indirectArgsBuffer = null;
         }
     }
 }

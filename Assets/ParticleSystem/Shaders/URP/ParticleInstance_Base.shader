@@ -19,13 +19,12 @@ Shader "Custom/InstanceParticle"
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment Frag
-
-            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+            
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             #include "Assets/ParticleSystem/Shaders/Utils/ParticlesUtils.hlsl"
 
-            StructuredBuffer<ParticleData> _ParticleBuffer;
+            StructuredBuffer<ParticleData> particles;
             uint debugItem;
             float4 _BaseColor;
 
@@ -45,7 +44,7 @@ Shader "Custom/InstanceParticle"
             Varyings Vert(Attributes input) {
                 Varyings output;
 
-                ParticleData particle = _ParticleBuffer[input.instanceID];
+                ParticleData particle = particles[input.instanceID];
 
                 float3 pos = mul(particle.mat, input.positionOS);
                 pos = TransformObjectToWorld(pos);
@@ -63,7 +62,7 @@ Shader "Custom/InstanceParticle"
             }
 
             float4 Frag(Varyings input) : SV_Target {
-                ParticleData particle = _ParticleBuffer[input.instanceID];
+                ParticleData particle = particles[input.instanceID];
 
                 float3 viewDir = input.viewDir;
                 float3 normalWS = input.normal;
@@ -71,9 +70,11 @@ Shader "Custom/InstanceParticle"
                 float shade = dot(normalWS, viewDir);
                 shade += abs(particle.force);
 
+                /*
                 if (input.instanceID == debugItem) {
                     _BaseColor = float4(0,0,1,1) * 50.0;
                 }
+                */
 
                 return _BaseColor * shade;
             }
