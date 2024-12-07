@@ -23,4 +23,14 @@ namespace ParticleSystem {
             return (vec3 * 6) + f + matrix;
         }
     }
+
+    public struct CellOffset {
+        public uint startIndex;
+        public uint count;
+
+        public static int Size() {
+            int ui = sizeof(uint);
+            return (ui * 2);
+        }
+    }
 }

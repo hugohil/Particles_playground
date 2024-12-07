@@ -1,3 +1,4 @@
+#pragma kernel ResetGrid
 #pragma kernel ComputeCellIndices
 #pragma kernel CountParticlesPerCell
 #pragma kernel UpSweep
@@ -17,17 +18,41 @@ RWStructuredBuffer<CellOffset> cell_offsets;
 RWStructuredBuffer<uint> cell_offset_counters;
 
 uint num_particle;
+uint num_cells;
 int3 grid_size;
 float delta_time;
 float time;
 float radius;
 
 [numthreads(64,1,1)]
+void ResetGrid(uint3 id : SV_DispatchThreadID) {
+    if (id.x > num_cells) return;
+
+    cell_offsets[id.x].startIndex = 0;
+    cell_offsets[id.x].count = 0;
+}
+
+[numthreads(64,1,1)]
 void ComputeCellIndices(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= num_particle) return;
+
+    float3 pos = particles[id.x].position;
+    int3 cellPos = floor(pos / grid_size);
+
+    uint cellIndex = cellPos.x
+                    + cellPos.y * grid_size.x
+                    + cellPos.z * grid_size.x * grid_size.y;
+    
+    cell_indices[id.x] = cellIndex;
+    particle_indices[id.x] = id.x; 
 }
 
 [numthreads(64,1,1)]
 void CountParticlesPerCell(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= num_particle) return;
+    
+    uint cellIndex = cell_indices[id.x];
+    InterlockedAdd(cell_counts[cellIndex], 1);
 }
 
 [numthreads(64,1,1)]
@@ -40,13 +65,66 @@ void DownSweep(uint3 id : SV_DispatchThreadID) {
 
 [numthreads(64,1,1)]
 void BuildCellOffsets(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= num_cells) return;
+
+    cell_offsets[id.x].startIndex = cell_counts[id.x];
+    cell_offsets[id.x].count = (id.x == num_cells - 1) ? 
+        num_particle - cell_counts[id.x] : 
+        cell_counts[id.x + 1] - cell_counts[id.x];
 } 
 
 [numthreads(64,1,1)]
 void SortParticles(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= num_particle) return;
+    
+    uint cellIndex = cell_indices[id.x];
+    uint originalParticleIndex = particle_indices[id.x];
+
+    uint offset;
+    InterlockedAdd(cell_offset_counters[cellIndex], 1, offset);
+
+    uint destinationIndex = cell_offsets[cellIndex].startIndex + offset;
+    destinationIndex = destinationIndex == num_cells - 1 ? 
+                 num_particle : 
+                 cell_offsets[destinationIndex + 1].startIndex;
+    if (originalParticleIndex == id.x || destinationIndex == id.x) return;
+    sorted_particles[destinationIndex] = particles[originalParticleIndex]; 
 }
 
 [numthreads(64,1,1)]
 void Collision(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= num_particle) return;
+    
+    ParticleData particle = sorted_particles[id.x];
+    uint3 cellPos = floor(particle.position / grid_size);
+    
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                uint3 neighborCell = cellPos + uint3(x, y, z);
+                
+                if (any(neighborCell < 0) || any(neighborCell >= num_cells)) continue;
+                
+                uint neighborCellIndex = neighborCell.x
+                                        + neighborCell.y * grid_size.x
+                                        + neighborCell.z * grid_size.x * grid_size.y;
+
+                uint start = cell_offsets[neighborCellIndex].startIndex;
+                uint end = neighborCellIndex == num_cells - 1 ? 
+                             num_particle : 
+                             cell_offsets[neighborCellIndex + 1].startIndex;
+
+                for (uint i = start; i < end; i++) {
+                    if (i == id.x) continue; // Skip self
+
+                    // particle is self
+                    ParticleData other = sorted_particles[i];
+                }
+            }
+        }
+    }
+
+    sorted_particles[id.x] = particle;
+    // todo: send data back to main particles buffer
 }
 
